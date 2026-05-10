@@ -1,0 +1,21 @@
+[package]
+name = "agenttrace"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+authors = ["MukundaKatta"]
+description = "Cost + latency aggregation for LLM agent runs. Group calls into named runs, get totals, p50/p95, and per-model breakdowns. Composes with cachebench."
+license = "MIT"
+repository = "https://github.com/MukundaKatta/agenttrace-rs"
+homepage = "https://github.com/MukundaKatta/agenttrace-rs"
+documentation = "https://docs.rs/agenttrace"
+readme = "README.md"
+keywords = ["llm", "tracing", "cost", "latency", "agent"]
+categories = ["development-tools::profiling", "api-bindings"]
+
+[dependencies]
+parking_lot = "0.12"
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"
