@@ -97,6 +97,39 @@ fn cloning_shares_history() {
 }
 
 #[test]
+fn dropping_handle_without_finish_still_seals_run() {
+    let t = Tracer::new();
+    {
+        let run = t.run("dropped");
+        run.record("m", 0.005, Duration::from_millis(42));
+        // `run` is dropped here without calling `finish()`.
+    }
+    let agg = t.aggregate();
+    assert_eq!(agg.runs, 1, "dropping a handle must seal its run");
+    assert_eq!(agg.calls, 1);
+    assert!((agg.total_cost_usd - 0.005).abs() < 1e-9);
+
+    let recs = t.runs();
+    assert_eq!(recs[0].name, "dropped");
+    assert_eq!(recs[0].call_count(), 1);
+}
+
+#[test]
+fn finish_then_drop_records_run_exactly_once() {
+    let t = Tracer::new();
+    let run = t.run("once");
+    run.record("m", 0.001, Duration::from_millis(10));
+    let rec = run.finish(); // consumes the handle; its Drop must not re-seal.
+    assert_eq!(rec.name, "once");
+    assert_eq!(
+        t.aggregate().runs,
+        1,
+        "finish must record the run exactly once"
+    );
+    assert_eq!(t.aggregate().calls, 1);
+}
+
+#[test]
 fn run_record_serializes_to_json() {
     let t = Tracer::new();
     let r = t.run("ser");

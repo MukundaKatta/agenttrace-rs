@@ -27,6 +27,4 @@
 
 mod tracer;
 
-pub use crate::tracer::{
-    Aggregate, CallRecord, ModelBreakdown, RunHandle, RunRecord, Tracer,
-};
+pub use crate::tracer::{Aggregate, CallRecord, ModelBreakdown, RunHandle, RunRecord, Tracer};

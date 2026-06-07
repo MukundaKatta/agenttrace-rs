@@ -1,6 +1,7 @@
 use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
@@ -48,11 +49,17 @@ impl RunRecord {
 }
 
 /// In-flight run handle. Drop or call [`finish`](Self::finish) to seal it.
+///
+/// Dropping the handle without calling [`finish`](Self::finish) seals the run
+/// just the same — the recorded calls are pushed to the parent tracer's history
+/// so they are never silently lost. The only difference is that `finish`
+/// returns the [`RunRecord`] to the caller.
 pub struct RunHandle {
     name: String,
     started_at: SystemTime,
     calls: Mutex<Vec<CallRecord>>,
     parent: Arc<TracerInner>,
+    sealed: AtomicBool,
 }
 
 impl RunHandle {
@@ -66,8 +73,14 @@ impl RunHandle {
         });
     }
 
-    /// Seal the run and ship it to the parent tracer's history.
-    pub fn finish(self) -> RunRecord {
+    /// Build the [`RunRecord`] and push it to the parent, exactly once.
+    ///
+    /// Returns `None` if the run was already sealed (e.g. `finish` was called
+    /// and then the handle dropped), so the caller never double-records.
+    fn seal(&self) -> Option<RunRecord> {
+        if self.sealed.swap(true, Ordering::AcqRel) {
+            return None;
+        }
         let calls = std::mem::take(&mut *self.calls.lock());
         let rec = RunRecord {
             name: self.name.clone(),
@@ -76,7 +89,23 @@ impl RunHandle {
             ended_at: SystemTime::now(),
         };
         self.parent.runs.lock().push(rec.clone());
-        rec
+        Some(rec)
+    }
+
+    /// Seal the run and ship it to the parent tracer's history.
+    pub fn finish(self) -> RunRecord {
+        // `seal` returns `Some` because a live, owned handle cannot have been
+        // sealed yet; the subsequent `Drop` is a no-op thanks to the flag.
+        self.seal()
+            .expect("a freshly owned RunHandle is sealed exactly once by finish")
+    }
+}
+
+impl Drop for RunHandle {
+    fn drop(&mut self) {
+        // If the handle is dropped without `finish`, still seal the run so its
+        // recorded calls reach the parent instead of being silently discarded.
+        let _ = self.seal();
     }
 }
 
@@ -141,6 +170,7 @@ impl Tracer {
             started_at: SystemTime::now(),
             calls: Mutex::new(Vec::new()),
             parent: self.inner.clone(),
+            sealed: AtomicBool::new(false),
         }
     }
 
